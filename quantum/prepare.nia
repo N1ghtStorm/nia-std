@@ -1,0 +1,98 @@
+// Quantum state preparation helpers for fixed-size qubit registers.
+//
+// All functions are `quant fn` and must be called from a `quant { ... }` block.
+// Run consumers with `nialang -q` (QIR backend).
+
+// Bell pair: (|00> + |11>) / sqrt(2).
+quant fn bell(control: qubit, target: qubit) {
+    H(control);
+    CNOT(control, target);
+}
+
+// Alias for the |Phi+> Bell state.
+quant fn bell_phi_plus(control: qubit, target: qubit) {
+    bell(control, target);
+}
+
+// |+> = H|0>.
+quant fn plus(q: qubit) {
+    H(q);
+}
+
+// |-> = H|1>.
+quant fn minus(q: qubit) {
+    X(q);
+    H(q);
+}
+
+// |1>.
+quant fn one(q: qubit) {
+    X(q);
+}
+
+// GHZ on two qubits (equivalent to `bell`).
+quant fn ghz2(qs: [qubit; 2]) {
+    bell(qs[0], qs[1]);
+}
+
+quant fn ghz4(qs: [qubit; 4]) {
+    H(qs[0]);
+    CNOT(qs[0], qs[1]);
+    CNOT(qs[0], qs[2]);
+    CNOT(qs[0], qs[3]);
+}
+
+quant fn ghz8(qs: [qubit; 8]) {
+    H(qs[0]);
+    CNOT(qs[0], qs[1]);
+    CNOT(qs[0], qs[2]);
+    CNOT(qs[0], qs[3]);
+    CNOT(qs[0], qs[4]);
+    CNOT(qs[0], qs[5]);
+    CNOT(qs[0], qs[6]);
+    CNOT(qs[0], qs[7]);
+}
+
+// Uniform superposition over all basis labels of the register.
+quant fn uniform2(qs: [qubit; 2]) {
+    H(qs[0]);
+    H(qs[1]);
+}
+
+quant fn uniform4(qs: [qubit; 4]) {
+    H(qs[0]);
+    H(qs[1]);
+    H(qs[2]);
+    H(qs[3]);
+}
+
+quant fn uniform8(qs: [qubit; 8]) {
+    for i in 0..8 {
+        H(qs[i]);
+    }
+}
+
+// Cat state (|0...0> + |1...1>) / sqrt(2); same circuit as GHZ.
+quant fn cat2(qs: [qubit; 2]) {
+    ghz2(qs);
+}
+
+quant fn cat4(qs: [qubit; 4]) {
+    ghz4(qs);
+}
+
+quant fn cat8(qs: [qubit; 8]) {
+    ghz8(qs);
+}
+
+// Biased cat on eight qubits: sqrt(3)/2 |00000000> + 1/2 |11111111>.
+quant fn biased_cat8(qs: [qubit; 8]) {
+    Ry(PI / 3.0, qs[0]);
+    CNOT(qs[0], qs[1]);
+    CNOT(qs[0], qs[2]);
+    CNOT(qs[0], qs[3]);
+    CNOT(qs[0], qs[4]);
+    CNOT(qs[0], qs[5]);
+    CNOT(qs[0], qs[6]);
+    CNOT(qs[0], qs[7]);
+}

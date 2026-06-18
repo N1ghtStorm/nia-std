@@ -1,0 +1,2 @@
+quant fn bell(a: qubit, b: qubit) { H(a); CNOT(a, b); }
+fn main() i32 { quant { let a=qubit(); let b=qubit(); bell(a,b); } 0 }

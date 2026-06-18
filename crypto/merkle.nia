@@ -1,0 +1,216 @@
+// Binary Merkle tree over 32-byte digests.
+//
+// Hashing uses byte-wise mixing with domain separation:
+//   hash_leaf(data)  = hash_bytes(0, data)
+//   hash_node(l, r)  = hash_bytes(1, concat(l, r))
+//
+// Replace `hash_bytes` with SHA-256 (or another collision-resistant hash) when
+// the compiler/runtime exposes one.
+
+fn digest_zero() [u8; 32] {
+    [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+    ]
+}
+
+fn byte_ne(a: &[u8; 32], b: &[u8; 32], i: i32) bool {
+    (*a)[i] != (*b)[i]
+}
+
+fn digest_mismatch(a: &[u8; 32], b: &[u8; 32], i: i32) i32 {
+    if byte_ne(a, b, i) {
+        return 1;
+    }
+    0
+}
+
+fn digest_eq_count(a: &[u8; 32], b: &[u8; 32]) i32 {
+    let mismatches: i32 = 0;
+    let j: i32 = 0;
+    while j < 32 {
+        mismatches = mismatches + digest_mismatch(a, b, j);
+        j = j + 1;
+    }
+    mismatches
+}
+
+fn digest_eq(a: &[u8; 32], b: &[u8; 32]) bool {
+    if digest_eq_count(a, b) == 0 {
+        return true;
+    }
+    false
+}
+
+fn digest_copy(src: [u8; 32]) [u8; 32] {
+    let out: [u8; 32] = digest_zero();
+    for i in 0..32 {
+        out[i] = src[i];
+    }
+    out
+}
+
+fn digest_mix_byte(state: [u8; 32], byte: u8) [u8; 32] {
+    let out: [u8; 32] = digest_copy(state);
+    for i in 0..32 {
+        let x: u8 = out[i] ^ byte;
+        let y: u8 = x + byte;
+        let rotated: u8 = (y << 1) | (y >> 7);
+        out[i] = rotated;
+    }
+    out
+}
+
+fn hash_bytes(tag: u8, data: List[u8]) [u8; 32] {
+    let tagged = digest_mix_byte(digest_zero(), tag);
+    let mixed: [u8; 32] = tagged;
+
+    for i in 0..data.len() {
+        mixed = digest_mix_byte(mixed, data.get(i));
+    }
+
+    digest_mix_byte(mixed, 255)
+}
+
+fn hash_leaf(data: List[u8]) [u8; 32] {
+    hash_bytes(0, data)
+}
+
+fn hash_node(left: [u8; 32], right: [u8; 32]) [u8; 32] {
+    let buf = list_with_capacity[u8](65);
+    buf.push(1);
+
+    for i in 0..32 {
+        buf.push(left[i]);
+    }
+    for i in 0..32 {
+        buf.push(right[i]);
+    }
+
+    hash_bytes(1, buf)
+}
+
+fn merkle_pair_right(level: List[[u8; 32]], i: i32, left: [u8; 32]) [u8; 32] {
+    if i + 1 < level.len() {
+        return level.get(i + 1);
+    }
+    left
+}
+
+fn merkle_sibling_index(index: i32) i32 {
+    if (index & 1) == 1 {
+        return index - 1;
+    }
+    index + 1
+}
+
+fn merkle_sibling_digest(level: List[[u8; 32]], index: i32) [u8; 32] {
+    let sibling_index: i32 = merkle_sibling_index(index);
+    if sibling_index < level.len() {
+        return level.get(sibling_index);
+    }
+    level.get(index)
+}
+
+fn merkle_fold_step(acc: [u8; 32], sibling: [u8; 32], index: i32) [u8; 32] {
+    if (index & 1) == 1 {
+        return hash_node(sibling, acc);
+    }
+    hash_node(acc, sibling)
+}
+
+fn merkle_root(leaves: List[[u8; 32]]) [u8; 32] {
+    if leaves.len() == 0 {
+        return digest_zero();
+    }
+
+    let level = list_with_capacity[[u8; 32]](leaves.len());
+    for i in 0..leaves.len() {
+        level.push(leaves.get(i));
+    }
+
+    while level.len() > 1 {
+        let next = list_with_capacity[[u8; 32]]((level.len() + 1) / 2);
+        let i: i32 = 0;
+        while i < level.len() {
+            let left = level.get(i);
+            let right = merkle_pair_right(level, i, left);
+            next.push(hash_node(left, right));
+            i = i + 2;
+        }
+        level = next;
+    }
+
+    level.get(0)
+}
+
+fn merkle_root_from_data(items: List[List[u8]]) [u8; 32] {
+    let leaves = list_with_capacity[[u8; 32]](items.len());
+    for i in 0..items.len() {
+        leaves.push(hash_leaf(items.get(i)));
+    }
+    merkle_root(leaves)
+}
+
+fn merkle_proof(leaf_index: i32, leaves: List[[u8; 32]]) List[[u8; 32]] {
+    let proof = list_new[[u8; 32]]();
+    if leaves.len() == 0 {
+        return proof;
+    }
+    if leaf_index < 0 {
+        return proof;
+    }
+    if leaf_index >= leaves.len() {
+        return proof;
+    }
+
+    let level = list_with_capacity[[u8; 32]](leaves.len());
+    for i in 0..leaves.len() {
+        level.push(leaves.get(i));
+    }
+
+    let index: i32 = leaf_index;
+
+    while level.len() > 1 {
+        let sibling = merkle_sibling_digest(level, index);
+        proof.push(sibling);
+
+        let next = list_with_capacity[[u8; 32]]((level.len() + 1) / 2);
+        let i: i32 = 0;
+        while i < level.len() {
+            let left = level.get(i);
+            let right = merkle_pair_right(level, i, left);
+            next.push(hash_node(left, right));
+            i = i + 2;
+        }
+
+        level = next;
+        index = index / 2;
+    }
+
+    proof
+}
+
+fn merkle_verify(
+    root: [u8; 32],
+    leaf: [u8; 32],
+    leaf_index: i32,
+    proof: List[[u8; 32]]
+) bool {
+    if leaf_index < 0 {
+        return false;
+    }
+
+    let mut_hash: [u8; 32] = digest_copy(leaf);
+    let mut_index: i32 = leaf_index;
+
+    for i in 0..proof.len() {
+        let sibling = proof.get(i);
+        mut_hash = merkle_fold_step(mut_hash, sibling, mut_index);
+        mut_index = mut_index / 2;
+    }
+
+    digest_eq(&mut_hash, &root)
+}
