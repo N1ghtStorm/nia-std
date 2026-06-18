@@ -1,0 +1,92 @@
+// 32-byte fingerprint hash over byte streams.
+//
+// `hash` / `hash_tagged` use byte-wise mixing with an optional domain-separation
+// tag. This is suitable for demos and Merkle trees in nia-std, but it is not
+// SHA-256 and should not be used where collision resistance is required.
+//
+// Swap the implementation for SHA-256 (or similar) when the runtime exposes one.
+
+fn digest_zero() [u8; 32] {
+    [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+    ]
+}
+
+fn byte_ne(a: &[u8; 32], b: &[u8; 32], i: i32) bool {
+    (*a)[i] != (*b)[i]
+}
+
+fn digest_mismatch(a: &[u8; 32], b: &[u8; 32], i: i32) i32 {
+    if byte_ne(a, b, i) {
+        return 1;
+    }
+    0
+}
+
+fn digest_eq_count(a: &[u8; 32], b: &[u8; 32]) i32 {
+    let mismatches: i32 = 0;
+    let j: i32 = 0;
+    while j < 32 {
+        mismatches = mismatches + digest_mismatch(a, b, j);
+        j = j + 1;
+    }
+    mismatches
+}
+
+fn digest_eq(a: &[u8; 32], b: &[u8; 32]) bool {
+    if digest_eq_count(a, b) == 0 {
+        return true;
+    }
+    false
+}
+
+fn digest_copy(src: [u8; 32]) [u8; 32] {
+    let out: [u8; 32] = digest_zero();
+    for i in 0..32 {
+        out[i] = src[i];
+    }
+    out
+}
+
+fn digest_mix_byte(state: [u8; 32], byte: u8) [u8; 32] {
+    let out: [u8; 32] = digest_copy(state);
+    for i in 0..32 {
+        let x: u8 = out[i] ^ byte;
+        let y: u8 = x + byte;
+        let rotated: u8 = (y << 1) | (y >> 7);
+        out[i] = rotated;
+    }
+    out
+}
+
+fn hash_tagged(tag: u8, data: List[u8]) [u8; 32] {
+    let tagged = digest_mix_byte(digest_zero(), tag);
+    let mixed: [u8; 32] = tagged;
+
+    for i in 0..data.len() {
+        mixed = digest_mix_byte(mixed, data.get(i));
+    }
+
+    digest_mix_byte(mixed, 255)
+}
+
+fn hash(data: List[u8]) [u8; 32] {
+    hash_tagged(0, data)
+}
+
+fn hash_pair(left: [u8; 32], right: [u8; 32]) [u8; 32] {
+    let buf = list_with_capacity[u8](65);
+    buf.push(1);
+
+    for i in 0..32 {
+        buf.push(left[i]);
+    }
+    for i in 0..32 {
+        buf.push(right[i]);
+    }
+
+    hash_tagged(1, buf)
+}
